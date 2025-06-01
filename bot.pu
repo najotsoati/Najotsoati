@@ -1,0 +1,97 @@
+import logging
+from aiogram import Bot, Dispatcher, types, executor
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+import os
+import openai
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+BOT_TOKEN = os.getenv("BOT_TOKEN", "7881497035:AAGCcHm8VGo45VDks8y_tgf1ENehrlHYfjo")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "1556307772"))
+OPENAI_KEY = os.getenv("OPENAI_KEY", "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")
+
+openai.api_key = OPENAI_KEY
+
+logging.basicConfig(level=logging.INFO)
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher(bot)
+
+# Check channel subscription
+async def check_subscription(user_id):
+    try:
+        member = await bot.get_chat_member(chat_id='@NajotSoati', user_id=user_id)
+        return member.status in ['member', 'creator', 'administrator']
+    except:
+        return False
+
+# Start command
+@dp.message_handler(commands=['start'])
+async def send_welcome(message: types.Message):
+    if not await check_subscription(message.from_user.id):
+        kb = InlineKeyboardMarkup().add(
+            InlineKeyboardButton("🔔 Kanalga obuna bo‘lish", url="https://t.me/NajotSoati")
+        )
+        await message.answer("Botdan foydalanish uchun kanalga obuna bo‘ling.", reply_markup=kb)
+        return
+    await message.answer("🎬 Salom! Kod yuboring, men sizga filmni yuboraman.")
+
+# Stats command
+@dp.message_handler(commands=['stats'])
+async def stats(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    if not os.path.exists("users.txt"):
+        with open("users.txt", "w"): pass
+    with open("users.txt", "r") as f:
+        users = len(f.readlines())
+    await message.answer(f"📊 Umumiy foydalanuvchilar soni: {users}")
+
+# AI chat command
+@dp.message_handler(commands=['ai'])
+async def ai_chat(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        return await message.answer("❌ Bu buyruq faqat admin uchun.")
+    prompt = message.text.replace('/ai', '').strip()
+    if not prompt:
+        return await message.answer("🧠 Menga qandaydir savol yoki topshiriq yuboring: `/ai Sizning savolingiz`")
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    await message.answer(response['choices'][0]['message']['content'])
+
+# Movie code handler
+@dp.message_handler()
+async def handle_code(message: types.Message):
+    if not await check_subscription(message.from_user.id):
+        return
+    code = message.text.strip()
+    video = get_video_by_code(code)
+    if video:
+        await bot.send_video(message.chat.id, video)
+    else:
+        await message.answer("❌ Bunday kodli film topilmadi.")
+
+# Example function to get video by code
+def get_video_by_code(code):
+    videos = {
+        "123": "https://t.me/mutfilmllar/140",
+    }
+    return videos.get(code)
+
+# Register user
+@dp.message_handler(lambda msg: msg.chat.type == 'private')
+async def register_user(message: types.Message):
+    if not os.path.exists("users.txt"):
+        with open("users.txt", "w"): pass
+    with open("users.txt", "r") as f:
+        if str(message.from_user.id) in f.read():
+            return
+    with open("users.txt", "a") as f:
+        f.write(f"{message.from_user.id}\n")
+
+if __name__ == '__main__':
+    executor.start_polling(dp, skip_updates=True)
+    
